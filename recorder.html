@@ -10,8 +10,11 @@
   body { font-family: 'Malgun Gothic', -apple-system, sans-serif; background:#f3f4f6; margin:0; padding:20px; }
   .card { max-width:480px; margin:0 auto; background:#fff; border-radius:14px; padding:24px;
           box-shadow:0 2px 10px rgba(0,0,0,0.08); }
-  h1 { font-size:18px; margin:0 0 6px; color:#111827; }
-  .sub { font-size:13px; color:var(--gray); margin-bottom:14px; }
+  .header-info { display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap; }
+  .class-badge { background:var(--blue); color:#fff; font-size:12px; font-weight:700;
+                  padding:4px 10px; border-radius:999px; }
+  .student-name-big { font-size:19px; font-weight:800; color:#111827; }
+  h1 { font-size:16px; margin:4px 0 12px; color:#374151; font-weight:600; }
   .script-box { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:16px;
                 margin-bottom:16px; font-size:16px; line-height:1.7; color:#111827; white-space:pre-wrap; }
   .hint { font-size:12px; color:var(--gray); margin-top:10px; text-align:center; }
@@ -19,18 +22,25 @@
            width:100%; }
   .btn-record { background:var(--blue); color:#fff; }
   .btn-stop { background:var(--red); color:#fff; }
+  .btn-submit { background:var(--green); color:#fff; margin-top:8px; }
+  .btn-redo2 { background:#f3f4f6; color:#374151; border:1px solid #d1d5db; margin-top:8px; }
   .btn-close { background:#f3f4f6; color:#374151; border:1px solid #d1d5db; margin-top:10px; }
   .status { text-align:center; font-size:15px; margin-top:14px; min-height:24px; }
   .timer { font-variant-numeric: tabular-nums; color:var(--gray); font-size:14px; text-align:center; margin-top:6px; }
   .banner { padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:14px; }
   .banner.error { background:#fef2f2; color:var(--red); }
+  .banner.info { background:#eff6ff; color:#1d4ed8; margin-top:12px; text-align:center; font-weight:600; }
   .result { text-align:center; margin-top:18px; font-size:17px; font-weight:700; }
+  audio { width:100%; margin-top:14px; }
 </style>
 </head>
 <body>
 <div class="card">
+  <div class="header-info">
+    <span class="class-badge" id="classBadge"></span>
+    <span class="student-name-big" id="studentNameBig"></span>
+  </div>
   <h1 id="titleLine">녹음하기</h1>
-  <div class="sub" id="subLine"></div>
   <div class="script-box" id="scriptText"></div>
 
   <div id="controls">
@@ -38,6 +48,7 @@
   </div>
   <div class="timer" id="timerText"></div>
   <div class="status" id="statusText"></div>
+  <div id="reviewArea"></div>
   <div id="resultArea"></div>
 
   <p class="hint">🔍 크롬 브라우저를 사용하면 좀 더 정확한 자동 분석을 받을 수 있어요.</p>
@@ -53,6 +64,7 @@ const params = new URLSearchParams(window.location.search);
 const ctx = {
   studentId: params.get('studentId') || '',
   studentName: params.get('studentName') || '',
+  className: params.get('className') || '',
   classId: params.get('classId') || '',
   assignmentId: params.get('assignmentId') || '',
   assignmentTitle: params.get('assignmentTitle') || '',
@@ -60,8 +72,9 @@ const ctx = {
   script: params.get('script') || ''
 };
 
-document.getElementById('titleLine').textContent = ctx.attempt + '번째 읽기';
-document.getElementById('subLine').textContent = ctx.studentName + ' · ' + ctx.assignmentTitle;
+document.getElementById('classBadge').textContent = ctx.className;
+document.getElementById('studentNameBig').textContent = ctx.studentName;
+document.getElementById('titleLine').textContent = ctx.attempt + '번째 읽기 · ' + ctx.assignmentTitle;
 document.getElementById('scriptText').textContent = ctx.script;
 
 if (!ctx.studentId || !ctx.assignmentId || !ctx.script) {
@@ -73,6 +86,7 @@ let mediaRecorder, audioChunks = [], recognizer = null;
 let recognizedTextBuffer = '';
 let recordingTimer = null, autoStopTimer = null, recordSeconds = 0;
 let isRecordingNow = false;
+let recordedBlob = null;
 
 window.addEventListener('beforeunload', (e) => {
   if (isRecordingNow) {
@@ -85,6 +99,7 @@ const recordBtn = document.getElementById('recordBtn');
 const controls = document.getElementById('controls');
 const timerText = document.getElementById('timerText');
 const statusText = document.getElementById('statusText');
+const reviewArea = document.getElementById('reviewArea');
 const resultArea = document.getElementById('resultArea');
 
 recordBtn.addEventListener('click', startRecording);
@@ -93,6 +108,7 @@ function startRecording() {
   audioChunks = [];
   recognizedTextBuffer = '';
   statusText.textContent = '';
+  reviewArea.innerHTML = '';
   resultArea.innerHTML = '';
 
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
@@ -104,7 +120,7 @@ function startRecording() {
       clearTimeout(autoStopTimer);
       clearInterval(recordingTimer);
       timerText.textContent = '';
-      finishRecording();
+      showReviewStep();
     };
     mediaRecorder.start();
     isRecordingNow = true;
@@ -151,11 +167,38 @@ function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
 }
 
-function finishRecording() {
-  statusText.textContent = '확인 중...';
-  controls.innerHTML = '';
+// ---- 녹음 종료 후: 들어보고 제출 여부 결정 ----
+function showReviewStep() {
+  recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
 
-  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+  if (recordedBlob.size < 2000) {
+    statusText.innerHTML = '<div class="banner error">녹음에 문제가 있어요. 다시 녹음해주세요.</div>';
+    controls.innerHTML = '<button class="btn-record" onclick="location.reload()">다시 녹음하기</button>';
+    return;
+  }
+
+  statusText.textContent = '';
+  controls.innerHTML = '';
+  const audioUrl = URL.createObjectURL(recordedBlob);
+  reviewArea.innerHTML = `
+    <audio controls src="${audioUrl}"></audio>
+    <p class="hint" style="margin-top:10px;">녹음을 들어본 뒤 제출해주세요. 마음에 안 들면 다시 녹음할 수 있어요.</p>
+    <button class="btn-submit" id="submitBtn">✅ 제출하기</button>
+    <button class="btn-redo2" id="redoBtn">🔄 다시 녹음하기</button>
+  `;
+  document.getElementById('submitBtn').addEventListener('click', submitRecordingNow);
+  document.getElementById('redoBtn').addEventListener('click', () => {
+    reviewArea.innerHTML = '';
+    recordedBlob = null;
+    controls.innerHTML = '<button class="btn-record" id="recordBtn">🎙️ 녹음 시작</button>';
+    document.getElementById('recordBtn').addEventListener('click', startRecording);
+  });
+}
+
+function submitRecordingNow() {
+  reviewArea.innerHTML = '';
+  statusText.textContent = '확인 중...';
+
   const reader = new FileReader();
   reader.onloadend = () => {
     const base64Data = reader.result.split(',')[1];
@@ -193,6 +236,7 @@ function finishRecording() {
 
         resultArea.innerHTML =
           '<div class="result">✅ 제출 완료!<br>' + gradeText + '</div>' +
+          '<div class="banner info">다시 녹음하거나 다음 번째 읽기를 하려면<br>이 창을 닫고 원래 화면으로 돌아가주세요.</div>' +
           '<button class="btn-close" id="closeBtn">이 창 닫고 돌아가기</button>';
 
         notifyOpenerAndMaybeClose();
@@ -203,7 +247,7 @@ function finishRecording() {
           '<button class="btn-record" onclick="location.reload()">다시 녹음하기</button>';
       });
   };
-  reader.readAsDataURL(blob);
+  reader.readAsDataURL(recordedBlob);
 }
 
 function notifyOpenerAndMaybeClose() {
