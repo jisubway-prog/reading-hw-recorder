@@ -69,12 +69,14 @@ const ctx = {
   assignmentId: params.get('assignmentId') || '',
   assignmentTitle: params.get('assignmentTitle') || '',
   attempt: params.get('attempt') || '1',
-  script: params.get('script') || ''
+  script: params.get('script') || '',
+  isRetry: params.get('isRetry') === '1'
 };
 
 document.getElementById('classBadge').textContent = ctx.className;
 document.getElementById('studentNameBig').textContent = ctx.studentName;
-document.getElementById('titleLine').textContent = ctx.attempt + '번째 읽기 · ' + ctx.assignmentTitle;
+document.getElementById('titleLine').textContent =
+  ctx.attempt + (ctx.isRetry ? '번째 다시읽기 · ' : '번째 읽기 · ') + ctx.assignmentTitle;
 document.getElementById('scriptText').textContent = ctx.script;
 
 if (!ctx.studentId || !ctx.assignmentId || !ctx.script) {
