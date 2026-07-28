@@ -55,6 +55,27 @@
 </div>
 
 <script>
+// ---- 버튼 중복 클릭 방지 (전역) ----
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('button');
+  if (!btn || btn.disabled || btn.dataset.busy === '1') return;
+  btn.dataset.busy = '1';
+  btn.dataset.origText = btn.textContent;
+  btn.disabled = true;
+  btn.style.opacity = '0.55';
+  btn.style.cursor = 'wait';
+  btn.textContent = btn.textContent + ' ⏳';
+  setTimeout(() => {
+    if (btn.isConnected) {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+      btn.textContent = btn.dataset.origText;
+      btn.dataset.busy = '0';
+    }
+  }, 3000);
+}, true);
+
 // ⚠️ Apps Script 웹앱 배포 URL로 반드시 교체하세요 (끝이 /exec 로 끝나는 그 주소).
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxeXH64BBnpFJG562tz64CxTS7CJh4CIxtqX_u6Yrhw_4JQIWnhS3MVCtv6ty9ZkrXa/exec';
 
